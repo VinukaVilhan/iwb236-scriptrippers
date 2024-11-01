@@ -20,7 +20,7 @@ Modal.setAppElement("#root");
 
 function DocumentationTool() {
     const { state, signIn } = useAuthContext();
-    const username = state.sub || "anonymous";
+    const username = state.username || "anonymous";
     const isAuthenticated = state.isAuthenticated;
 
     // State for file uploading
@@ -33,6 +33,7 @@ function DocumentationTool() {
     const [errorMessage, setErrorMessage] = useState("");
 
     // State for delete operation
+    // const [isDeleting, setIsDeleting] = useState(false);
     const [isDeleting, setIsDeleting] = useState({});
     const [deleteStatus, setDeleteStatus] = useState("");
 
@@ -125,7 +126,7 @@ function DocumentationTool() {
             const response = await fetch(
                 `http://localhost:8080/download/${encodeURIComponent(
                     username
-                )}/${encodeURIComponent(fileName)}`,
+                )}/${encodeURIComponent(fileName.split("/").pop())}`,
                 { method: "GET" }
             );
 
@@ -136,6 +137,11 @@ function DocumentationTool() {
             // Get the blob from the response
             const blob = await response.blob();
 
+            // Verify blob is not empty
+            if (blob.size === 0) {
+                throw new Error("Received empty file");
+            }
+
             // Create a temporary URL for the blob
             const url = window.URL.createObjectURL(blob);
 
@@ -144,11 +150,15 @@ function DocumentationTool() {
             a.href = url;
             a.download = fileName.split("/").pop(); // Get just the filename without the path
 
-            // Append to document, click, and cleanup
+            // Trigger download
             document.body.appendChild(a);
             a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
+
+            // Cleanup
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 0);
         } catch (error) {
             console.error("Error downloading file:", error);
             setErrorMessage(`Error downloading file: ${error.message}`);
@@ -183,12 +193,13 @@ function DocumentationTool() {
 
             let result = "";
             await response.text();
-            if (response.status === 200) {
+            if (response.status == 200) {
                 result = "File deleted successfully";
             } else {
                 result = "File deletion failed";
             }
 
+            console.log(result);
             setDeleteStatus(result);
             await fetchS3Objects(); // Refresh the file list
         } catch (error) {
@@ -382,7 +393,7 @@ function DocumentationTool() {
                                                             .pop()
                                                     )}`}
                                                     alt={object.name}
-                                                    className="w-32 h-32 object-cover rounded-md shadow cursor-pointer mr-4"
+                                                    className="w-32 h-32 object-cover rounded-md shadow cursor-pointer"
                                                     loading="lazy"
                                                     onClick={() =>
                                                         openModal(
@@ -445,25 +456,19 @@ function DocumentationTool() {
                 isOpen={modalIsOpen}
                 onRequestClose={closeModal}
                 contentLabel="Image Preview"
-                className="fixed inset-0 flex items-center justify-center p-4"
-                overlayClassName="fixed inset-0 bg-black bg-opacity-50 z-50"
+                className="modal"
+                overlayClassName="overlay"
             >
-                <div className="relative bg-white rounded-lg shadow-lg p-4 max-w-full max-h-full overflow-auto">
-                    <button
-                        onClick={closeModal}
-                        className="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded-full p-2 focus:outline-none"
-                        aria-label="Close modal"
-                    >
-                        ×
-                    </button>
-                    {modalImageSrc && (
-                        <img
-                            src={modalImageSrc}
-                            alt="Preview"
-                            className="max-w-full max-h-screen object-contain mx-auto"
-                        />
-                    )}
-                </div>
+                <button onClick={closeModal} className="close-button">
+                    ×
+                </button>
+                {modalImageSrc && (
+                    <img
+                        src={modalImageSrc}
+                        alt="Preview"
+                        className="modal-image"
+                    />
+                )}
             </Modal>
         </div>
     );
