@@ -272,27 +272,25 @@ service / on new http:Listener(port) {
     }
 
     // File delete handler
+    // File delete handler
     resource function delete delete/[string username]/[string filename](http:Request req) returns http:Response|error {
         http:Response response = new;
         response.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
         response.setHeader("Access-Control-Allow-Methods", "DELETE,OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "*");
 
-        string objectPath = string `${username}/${filename}`;
+        string objectPath = string `${filename}`;
+
         log:printInfo(string `Attempting to delete file: ${objectPath}`);
 
-        error? deleteObjectResponse = self.s3Client->deleteObject(bucketName, objectPath);
-        
+
+        error? deleteObjectResponse = amazonS3Client->deleteObject(bucketName, objectPath);
         if (deleteObjectResponse is error) {
-            log:printError("Error deleting object from S3", deleteObjectResponse);
-            response.statusCode = 500;
-            response.setTextPayload("Error deleting file: " + deleteObjectResponse.message());
-            return response;
+            log:printError("Error: " + deleteObjectResponse.toString());
+        } else {
+            log:printInfo("Successfully deleted object");
         }
 
-        log:printInfo("Successfully deleted object");
-        response.statusCode = 200;
-        response.setTextPayload("File deleted successfully");
         return response;
     }
 
