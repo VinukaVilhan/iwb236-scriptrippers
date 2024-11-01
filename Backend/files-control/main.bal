@@ -33,21 +33,29 @@ final readonly & map<string> contentTypes = {
     "gif": "image/gif",
     "webp": "image/webp",
     "pdf": "application/pdf",
-    "txt": "text/plain"
+    "txt": "text/plain",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "mp4": "video/mp4",
+    "avi": "video/x-msvideo",
+    "mov": "video/quicktime",
+    "doc": "application/msword",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xls": "application/vnd.ms-excel",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "zip": "application/zip",
+    "rar": "application/x-rar-compressed"
 };
-
 
 @http:ServiceConfig {
     cors: {
         allowOrigins: ["http://localhost:5173"], // Add your frontend origin
         allowCredentials: false,
-        allowHeaders: ["*"],  // Allow all headers
+        allowHeaders: ["*"],
         allowMethods: ["GET", "POST", "DELETE", "OPTIONS", "HEAD"],
         exposeHeaders: ["*"]
     }
 }
-
-
 service / on new http:Listener(port) {
     private final s3:Client s3Client;
     private final audio:Client audioClient;
@@ -196,7 +204,6 @@ service / on new http:Listener(port) {
             return response;
         }
 
-        // Generate timestamp-based filename for transcription
         string timestamp = self.getCurrentTimestamp();
         string transcriptionFileName = timestamp + "-transcription.txt";
 
@@ -227,22 +234,44 @@ service / on new http:Listener(port) {
         response.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type");
         
-        string objectPath = filename;
+        string objectPath = string `${username}/${filename}`;
         log:printInfo(string `Attempting to download file: ${objectPath}`);
 
-
-
-        stream<byte[], io:Error?>|error downloadResponse = amazonS3Client->getObject(bucketName, objectPath);
+        stream<byte[], io:Error?>|error downloadResponse = self.s3Client->getObject(bucketName, objectPath);
+        
         if (downloadResponse is error) {
-            log:printError("Error downloading object: " + downloadResponse.toString());
-        } else {
-            log:printInfo("Successfully downloaded object to " + objectPath);
+            log:printError("Error accessing object from S3", downloadResponse);
+            response.statusCode = 404;
+            response.setTextPayload("File not found or error accessing file");
+            return response;
         }
+
+        byte[] fileContent = [];
+        error? result = downloadResponse.forEach(function(byte[] chunk) {
+            fileContent.push(...chunk);
+        });
+
+        if (result is error) {
+            log:printError("Error reading file stream", result);
+            response.statusCode = 500;
+            response.setTextPayload("Error reading file: " + result.message());
+            return response;
+        }
+
+        // Get file extension and determine content type
+        string[] parts = regex:split(filename, "\\.");
+        string extension = parts.length() > 1 ? parts[parts.length() - 1].toLowerAscii() : "";
+        string contentType = contentTypes[extension] ?: "application/octet-stream";
+
+        // Set appropriate headers for file download
+        response.setHeader("Content-Disposition", string `attachment; filename="${filename}"`);
+        response.setHeader("Content-Type", contentType);
+        response.setBinaryPayload(fileContent);
         
         return response;
     }
 
-
+    // File delete handler
     // File delete handler
     resource function delete delete/[string username]/[string filename](http:Request req) returns http:Response|error {
         http:Response response = new;
@@ -264,12 +293,8 @@ service / on new http:Listener(port) {
 
         return response;
     }
-    
 
-
-    
-
-    // View file handler
+    // View file handler (for images and PDFs)
     resource function get view/[string username]/[string filename](http:Request req) returns http:Response|error {
         http:Response response = new;
         response.setHeader("Access-Control-Allow-Origin", "*");
@@ -296,8 +321,6 @@ service / on new http:Listener(port) {
             // Get file extension and determine content type
             string[] parts = regex:split(filename, "\\.");
             string extension = parts.length() > 1 ? parts[parts.length() - 1].toLowerAscii() : "";
-            
-            // Use a predefined contentTypes map, or fallback to "application/octet-stream"
             string contentType = contentTypes[extension] ?: "application/octet-stream";
 
             response.setHeader("Content-Type", contentType);
@@ -319,6 +342,4 @@ public function main() returns error? {
     - S3 Bucket: ${bucketName}
     - AWS Region: ${region}
     Server started successfully`);
-
-
 }
